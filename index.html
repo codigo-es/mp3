@@ -11,7 +11,7 @@
             --card: #212121;
             --text: #ffffff;
         }
-        body {1dafc3d7e4msh38d57cd521f6fe2p10b165jsn6fda8f8f5847
+        body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--bg);
             color: var(--text);
@@ -34,7 +34,7 @@
             font-size: 1.5rem;
             margin-bottom: 1.5rem;
         }
-        input[type="url"] {
+        input[type="text"] {
             width: 90%;
             padding: 12px;
             margin-bottom: 1rem;
@@ -67,16 +67,21 @@
             margin-top: 1.5rem;
             font-size: 0.95rem;
             word-wrap: break-word;
+            line-height: 1.5;
         }
         .download-btn {
             display: inline-block;
-            margin-top: 10px;
-            padding: 10px 20px;
+            margin-top: 12px;
+            padding: 12px 24px;
             background-color: #2ba640;
             color: white;
             text-decoration: none;
             border-radius: 6px;
             font-weight: bold;
+            transition: background 0.3s;
+        }
+        .download-btn:hover {
+            background-color: #218532;
         }
     </style>
 </head>
@@ -84,54 +89,75 @@
 
 <div class="container">
     <h1>YouTube a MP3</h1>
-    <input type="url" id="ytUrl" placeholder="Pega el enlace de YouTube aquí..." required>
-    <button id="convertBtn" onclick="convertirAMP3()">Convertir a MP3</button>
+    <input type="text" id="ytUrl" placeholder="Pega el enlace de YouTube aquí..." required>
+    <button id="convertBtn" onclick="iniciarConversion()">Convertir a MP3</button>
     <div id="status"></div>
 </div>
 
 <script>
-    async function convertirAMP3() {
+    // Función para extraer el ID de 11 caracteres de cualquier link de YouTube
+    function extraerIdYoutube(url) {
+        const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+        const match = url.match(regExp);
+        if (match && match[1]) {
+            return match[1];
+        }
+        // Si el usuario pegó directamente el ID de 11 caracteres
+        if (url.length === 11) {
+            return url;
+        }
+        return null;
+    }
+
+    async function iniciarConversion() {
         const urlInput = document.getElementById('ytUrl').value.trim();
         const statusDiv = document.getElementById('status');
         const btn = document.getElementById('convertBtn');
 
-        if (!urlInput) {
-            statusDiv.innerHTML = "⚠️ Por favor, ingresa una URL válida.";
+        const videoId = extraerIdYoutube(urlInput);
+
+        if (!videoId) {
+            statusDiv.innerHTML = "⚠️ Por favor, ingresa un enlace de YouTube válido.";
             return;
         }
 
         btn.disabled = true;
         statusDiv.innerHTML = "⏳ Procesando el audio, por favor espera...";
 
+        await consultarAPI(videoId, statusDiv, btn);
+    }
+
+    async function consultarAPI(videoId, statusDiv, btn) {
+        const url = `https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`;
+        const options = {
+            method: 'GET',
+            headers: {
+                'x-rapidapi-key': '1dafc3d7e4msh38d57cd521f6fe2p10b165jsn6fda8f8f5847',
+                'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com'
+            }
+        };
+
         try {
-            // Se utiliza una instancia pública de la API de Cobalt para procesar la extracción
-            const response = await fetch('1dafc3d7e4msh38d57cd521f6fe2p10b165jsn6fda8f8f5847', {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    url: urlInput,
-                    isAudioOnly: true,
-                    aFormat: 'mp3'
-                })
-            });
+            const response = await fetch(url, options);
+            const result = await response.json();
 
-            const data = await response.json();
-
-            if (data.status === 'stream' || data.status === 'redirect') {
+            if (result.status === 'ok' && result.link) {
                 statusDiv.innerHTML = `
-                    ✅ ¡Listo!<br>
-                    <a class="download-btn" href="${data.url}" target="_blank" download>Descargar MP3</a>
+                    ✅ <strong>${result.title || '¡Audio listo!'}</strong><br>
+                    <a class="download-btn" href="${result.link}" target="_blank" rel="noopener noreferrer">Descargar MP3</a>
                 `;
+                btn.disabled = false;
+            } else if (result.status === 'processing') {
+                // Si el vídeo es largo y la API sigue convirtiéndolo, vuelve a consultar en 2 segundos
+                statusDiv.innerHTML = `⏳ Convirtiendo vídeo (${result.progress || 0}%)...`;
+                setTimeout(() => consultarAPI(videoId, statusDiv, btn), 2000);
             } else {
-                statusDiv.innerHTML = "❌ Error al procesar el vídeo. Verifica el enlace o intenta más tarde.";
+                statusDiv.innerHTML = `❌ Error: ${result.msg || 'No se pudo convertir este vídeo.'}`;
+                btn.disabled = false;
             }
         } catch (error) {
             console.error(error);
-            statusDiv.innerHTML = "❌ Hubo un problema de conexión con el servidor de conversión.";
-        } finally {
+            statusDiv.innerHTML = "❌ Hubo un problema de conexión con la API.";
             btn.disabled = false;
         }
     }
